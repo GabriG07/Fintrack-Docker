@@ -1,0 +1,61 @@
+services:
+
+  # Container 1: Banco de dados PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: fintrack-postgres
+    environment:
+      POSTGRES_DB: fintrack
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # persistir os dados mesmo após o container ser removido
+    networks:
+      - fintrack-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]  # verifica se o banco já está pronto antes do backend tentar conectar.
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Container 2: Backend Spring Boot
+  backend:
+    build:
+      context: ./fintrack-api
+      dockerfile: Dockerfile
+    container_name: fintrack-backend
+    environment:
+      
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/fintrack # o banco é acessado pelo nome do container "postgres", não por localhost
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      JWT_SECRET: fintrack-super-secret-key-must-be-at-least-256-bits-long!!
+      JWT_EXPIRATION: 900000
+    depends_on:
+      postgres:
+        condition: service_healthy # Só inicia o backend quando o banco passar no healthcheck
+    networks:
+      - fintrack-network
+
+  # Container 3: Frontend React
+  frontend:
+    build:
+      context: ./fintrack-web
+      dockerfile: Dockerfile
+    container_name: fintrack-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - fintrack-network
+
+# Rede interna
+networks:
+  fintrack-network:
+    driver: bridge
+    # Todos os contêineres se comunicam por nome nesta rede
+
+# Volume persistente
+volumes:
+  postgres_data:
